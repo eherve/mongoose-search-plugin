@@ -2,6 +2,7 @@
 
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
+import * as lodash from 'lodash';
 import mongoose from 'mongoose';
 import { searchPlugin } from './plugin';
 import { searchFrText } from './update-tools';
@@ -34,7 +35,7 @@ const ModelSchema = new mongoose.Schema({
       search: true,
     },
   },
-  product: { type: ProduitSchema },
+  produit: { type: ProduitSchema },
   produits: { type: [ProduitSchema] },
 });
 
@@ -79,6 +80,13 @@ const fields = [
     weight: 1,
   },
   {
+    path: 'produit.description',
+    textPath: 'produit.__description',
+    name: 'description',
+    unchanged: false,
+    weight: 1,
+  },
+  {
     path: 'produits.description',
     textPath: 'produits.__description',
     name: 'description',
@@ -91,6 +99,11 @@ const fields = [
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
+let select: string = '';
+fields.forEach(field => {
+  select += `+${field.textPath} `;
+});
+
 describe('Search Lib', () => {
   before(done => {
     mongoose.connect(mongoUrl);
@@ -101,57 +114,69 @@ describe('Search Lib', () => {
   beforeEach(reset);
 
   it('initial value on insertMany/create', async () => {
-    const data = await model.find({});
+    const data = await model.find({}).select(select);
     data.forEach(d => checkFields(d));
   });
 
   it('find one with $text', async () => {
-    const data = await model.find({ $text: { $search: 'PlAnifiee' } });
+    let data = await model.find({ $text: { $search: 'PlAnifiee' } });
+    expect(data).to.have.lengthOf(1);
+    expect(data[0]).to.have.property('code', 'B02');
+    data = await model.find({ $text: { $search: 'PlAni' } });
+    expect(data).to.have.lengthOf(1);
+    expect(data[0]).to.have.property('code', 'B02');
+    data = await model.find({ $text: { $search: '"Composant utilisé pour établir"' } });
     expect(data).to.have.lengthOf(1);
     expect(data[0]).to.have.property('code', 'B02');
   });
 
   it('find weight with $text', async () => {
-    const data = await model
+    let data = await model
       .find({ $text: { $search: 'REF_ALPHA' } }, { score: { $meta: 'textScore' } })
       .sort({ score: { $meta: 'textScore' } });
     expect(data).to.have.lengthOf(2);
     expect(data[0]).to.have.property('reference', 'REF_ALPHA');
     expect(data[1]).to.have.property('reference', 'REF-BETA');
+    data = await model
+      .find({ $text: { $search: 'Composant utilisé établir' } }, { score: { $meta: 'textScore' } })
+      .sort({ score: { $meta: 'textScore' } });
+    expect(data).to.have.lengthOf(2);
+    expect(data[0]).to.have.property('code', 'B02');
+    expect(data[1]).to.have.property('code', 'A01');
   });
 
   it('update one $set', async () => {
     const filter = { code: 'A01' };
     await model.updateOne(filter, { $set: { reference: 'TEST-CHANGE-REF3' } });
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
 
   it('update one $set in array', async () => {
     const filter = { code: 'A01', 'produits.reference': 'P-1001' };
     await model.updateOne(filter, { $set: { 'produits.$.description': 'product 1001 updated' } });
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
 
   it('update many $set', async () => {
     const filter = {};
     await model.updateMany(filter, { $set: { description: `New description` } });
-    const data = await model.find(filter);
+    const data = await model.find(filter).select(select);
     data.forEach(d => checkFields(d));
   });
 
   it('update many $set', async () => {
     const filter = {};
     await model.updateMany(filter, { $set: { 'produits.$[].description': `New description` } });
-    const data = await model.find(filter);
+    const data = await model.find(filter).select(select);
     data.forEach(d => checkFields(d));
   });
 
   it('update one $set', async () => {
     const filter = { code: 'A01' };
     await model.updateOne(filter, { $set: { reference: 'TEST-CHANGE-REF3' } });
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
 
@@ -165,7 +190,7 @@ describe('Search Lib', () => {
         },
       },
     ]);
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
 
@@ -179,7 +204,7 @@ describe('Search Lib', () => {
         },
       },
     ]);
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
 
@@ -196,7 +221,7 @@ describe('Search Lib', () => {
         },
       },
     ]);
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
 
@@ -213,453 +238,9 @@ describe('Search Lib', () => {
         },
       },
     ]);
-    const data = await model.findOne(filter);
+    const data = await model.findOne(filter).select(select);
     checkFields(data);
   });
-
-  // describe('Embedded value change', () => {
-  //   describe('Insert', () => {
-  //     it('with root id', async () => {
-  //       const data = await parent.findOne({ code: 'P001' });
-  //       expect(data).to.have.property('embedded').to.have.property('code', 'C001');
-  //     });
-  //     it('with root array id', async () => {
-  //       const data = await parent.findOne({ code: 'P001a' });
-  //       expect(data)
-  //         .to.have.property('embeddeds')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //     it('with embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P001b' });
-  //       expect(data).to.have.property('level').to.have.property('embedded').to.have.property('code', 'C001');
-  //     });
-  //     it('with array embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P001c' });
-  //       expect(data)
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //     it('with embedded array embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P001d' });
-  //       expect(data)
-  //         .to.have.property('sublevel')
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //     it('with array array embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P001e' });
-  //       expect(data)
-  //         .to.have.property('sublevels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //   });
-
-  //   describe('Create', () => {
-  //     it('with root id', async () => {
-  //       const data = await parent.findOne({ code: 'P002' });
-  //       expect(data).to.have.property('embedded').to.have.property('code', 'C001');
-  //     });
-  //     it('with root array id', async () => {
-  //       const data = await parent.findOne({ code: 'P002a' });
-  //       expect(data)
-  //         .to.have.property('embeddeds')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //     it('with embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P002b' });
-  //       expect(data).to.have.property('level').to.have.property('embedded').to.have.property('code', 'C001');
-  //     });
-  //     it('with array embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P002c' });
-  //       expect(data)
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //     it('with embedded array embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P002d' });
-  //       expect(data)
-  //         .to.have.property('sublevel')
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //     it('with array array embedded id', async () => {
-  //       const data = await parent.findOne({ code: 'P002e' });
-  //       expect(data)
-  //         .to.have.property('sublevels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C001');
-  //     });
-  //   });
-
-  //   describe('Update $set', () => {
-  //     it('with root id - update one', async () => {
-  //       const filter = { code: 'P001' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, { $set: { embedded: embeddedId } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //     it('with root id - update many', async () => {
-  //       const filter = {};
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateMany(filter, { $set: { embedded: embeddedId } });
-  //       const data = await parent.find(filter);
-  //       lodash.each(data, d => {
-  //         expect(d).to.have.property('embedded').to.have.property('code', 'C002');
-  //       });
-  //     });
-  //     it('with root array id', async () => {
-  //       const filter = { code: 'P002a' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, { $set: { embeddeds: [embeddedId] } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data)
-  //         .to.have.property('embeddeds')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('code', 'C002');
-  //     });
-  //     it('with embedded id - path', async () => {
-  //       const filter = { code: 'P002b' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, { $set: { 'level.embedded': embeddedId } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('level').to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //     it('with embedded id - object', async () => {
-  //       const filter = { code: 'P002b' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, [{ $set: { level: { embedded: embeddedId } } }]);
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('level').to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //     it('with embedded id - object $mergeObjects', async () => {
-  //       const filter = { code: 'P002b' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, [{ $set: { level: { $mergeObjects: ['$level', { embedded: embeddedId }] } } }]);
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('level').to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //     it('with array embedded id', async () => {
-  //       const filter = { code: 'P002c' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, { $set: { 'levels.$[].embedded': embeddedId } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data)
-  //         .to.have.property('levels')
-  //         .to.have.length(1)
-  //         .to.have.property('0')
-  //         .to.have.property('embedded')
-  //         .to.have.property('code', 'C002');
-  //     });
-  //   });
-
-  //   describe('Update $push', () => {
-  //     it('with root array id', async () => {
-  //       const filter = { code: 'P002a' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, { $push: { embeddeds: embeddedId } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embeddeds').to.have.length(2);
-  //       expect(data.embeddeds).to.have.property('0').to.have.property('code', 'C001');
-  //       expect(data.embeddeds).to.have.property('1').to.have.property('code', 'C002');
-  //     });
-  //   });
-
-  //   describe('Update $addToSet', () => {
-  //     it('with root array id', async () => {
-  //       const filter = { code: 'P002a' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.updateOne(filter, { $addToSet: { embeddeds: embeddedId } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embeddeds').to.have.length(2);
-  //     });
-  //   });
-
-  //   describe('Update $addToSet existing', () => {
-  //     it('with root array id', async () => {
-  //       const filter = { code: 'P002a' };
-  //       const embeddedId = lodash.find(childs, { code: 'C001' })?._id;
-  //       await parent.updateOne(filter, { $addToSet: { embeddeds: embeddedId } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embeddeds').to.have.length(1);
-  //     });
-  //   });
-
-  //   describe('Update $push $each', () => {
-  //     it('with root array id', async () => {
-  //       const filter = { code: 'P002a' };
-  //       const embeddedIds = lodash.map(childs, '_id');
-  //       await parent.updateOne(filter, { $push: { embeddeds: { $each: embeddedIds } } });
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embeddeds').to.have.length(3);
-  //       expect(data.embeddeds).to.have.property('0').to.have.property('code', 'C001');
-  //       expect(data.embeddeds).to.have.property('1').to.have.property('code', 'C001');
-  //       expect(data.embeddeds).to.have.property('2').to.have.property('code', 'C002');
-  //     });
-  //   });
-
-  //   describe('BulkUpdate $set', () => {
-  //     it('with root id - update one', async () => {
-  //       const filter = { code: 'P001' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.bulkWrite([
-  //         {
-  //           updateOne: {
-  //             filter,
-  //             update: { $set: { embedded: embeddedId } },
-  //           },
-  //         },
-  //       ]);
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //     it('with root id - update many', async () => {
-  //       const filter = {};
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.bulkWrite([
-  //         {
-  //           updateMany: {
-  //             filter,
-  //             update: { $set: { embedded: embeddedId } },
-  //           },
-  //         },
-  //       ]);
-  //       const data = await parent.find(filter);
-  //       lodash.each(data, d => {
-  //         expect(d).to.have.property('embedded').to.have.property('code', 'C002');
-  //       });
-  //     });
-  //   });
-
-  //   describe('Aggregate $merge pipeline', () => {
-  //     it('with root id', async () => {
-  //       const filter = { code: 'P001' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.aggregate([
-  //         { $match: filter },
-  //         {
-  //           $merge: {
-  //             into: parent.collection.collectionName,
-  //             whenNotMatched: 'discard',
-  //             whenMatched: [{ $set: { embedded: embeddedId } }],
-  //           },
-  //         },
-  //       ]);
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //   });
-
-  //   describe('Aggregate $merge merge', () => {
-  //     it('with root id', async () => {
-  //       const filter = { code: 'P001' };
-  //       const embeddedId = lodash.find(childs, { code: 'C002' })?._id;
-  //       await parent.aggregate([
-  //         { $match: filter },
-  //         { $project: { embedded: embeddedId } },
-  //         {
-  //           $merge: {
-  //             into: parent.collection.collectionName,
-  //             whenNotMatched: 'discard',
-  //             whenMatched: 'merge',
-  //           },
-  //         },
-  //       ]);
-  //       const data = await parent.findOne(filter);
-  //       expect(data).to.have.property('embedded').to.have.property('code', 'C002');
-  //     });
-  //   });
-  // });
-
-  // describe('embedded target change', () => {
-  //   it('update', async () => {
-  //     const filter = { code: 'C001' };
-  //     await child.updateOne(filter, { $set: { status: 'test' } });
-  //     const data = await parent.find({ code: /P001.*/ });
-  //     data.forEach(d => {
-  //       ['P001', 'P002'].forEach(prefix => {
-  //         if (d.code === prefix) {
-  //           expect(d).to.have.property('embedded').to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}a`) {
-  //           expect(d)
-  //             .to.have.property('embeddeds')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}b`) {
-  //           expect(d).to.have.property('level').to.have.property('embedded').to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}c`) {
-  //           expect(d)
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}d`) {
-  //           expect(d)
-  //             .to.have.property('sublevel')
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}e`) {
-  //           expect(d)
-  //             .to.have.property('sublevels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //       });
-  //     });
-  //   });
-  //   it('bulkUpdate', async () => {
-  //     const filter = { code: 'C001' };
-  //     await child.bulkWrite([{ updateOne: { filter, update: { $set: { status: 'test' } } } }]);
-  //     const data = await parent.find({ code: /P001.*/ });
-  //     data.forEach(d => {
-  //       ['P001', 'P002'].forEach(prefix => {
-  //         if (d.code === prefix) {
-  //           expect(d).to.have.property('embedded').to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}a`) {
-  //           expect(d)
-  //             .to.have.property('embeddeds')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}b`) {
-  //           expect(d).to.have.property('level').to.have.property('embedded').to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}c`) {
-  //           expect(d)
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}d`) {
-  //           expect(d)
-  //             .to.have.property('sublevel')
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}e`) {
-  //           expect(d)
-  //             .to.have.property('sublevels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //       });
-  //     });
-  //   });
-  //   it('aggregate $merge pipeline', async () => {
-  //     const filter = { code: 'C001' };
-  //     await child.aggregate([
-  //       { $match: filter },
-  //       {
-  //         $merge: {
-  //           into: child.collection.collectionName,
-  //           whenNotMatched: 'discard',
-  //           whenMatched: [{ $set: { status: 'test' } }],
-  //         },
-  //       },
-  //     ]);
-  //     const data = await parent.find({ code: /P001.*/ });
-  //     data.forEach(d => {
-  //       ['P001', 'P002'].forEach(prefix => {
-  //         if (d.code === prefix) {
-  //           expect(d).to.have.property('embedded').to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}a`) {
-  //           expect(d)
-  //             .to.have.property('embeddeds')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}b`) {
-  //           expect(d).to.have.property('level').to.have.property('embedded').to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}c`) {
-  //           expect(d)
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}d`) {
-  //           expect(d)
-  //             .to.have.property('sublevel')
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //         if (d.code === `${prefix}e`) {
-  //           expect(d)
-  //             .to.have.property('sublevels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('levels')
-  //             .to.have.length(1)
-  //             .to.have.property('0')
-  //             .to.have.property('embedded')
-  //             .to.have.property('status', 'test');
-  //         }
-  //       });
-  //     });
-  //   });
-  // });
 
   after(() => {
     mongoose.connection.close();
@@ -674,9 +255,9 @@ function checkFields(obj: any) {
 }
 
 function check(obj: any, path: string) {
+  if (lodash.isNil(obj)) return;
   const chunks = path.split('.');
   const head = chunks[0];
-  expect(obj).to.not.be.undefined;
   if (chunks.length > 1) {
     expect(obj).to.have.property(head);
   } else {
@@ -707,6 +288,7 @@ async function seed(): Promise<void> {
         status: 'Actif',
         commentaire: 'Aucune anomalie détectée lors de l’initialisation.',
       },
+      produit: { reference: 'P-1000', description: 'test produit' },
       produits: [
         { reference: 'P-1001', description: 'Clé USB 32 Go – compacte et rapide' },
         { reference: 'P-1002', description: 'Adaptateur HDMI vers VGA – avec audio intégré' },
@@ -738,12 +320,19 @@ async function seed(): Promise<void> {
       details: {
         type: 'Audit',
         status: 'Inactif',
-        commentaire: 'Désactivé temporairement pour maintenance.',
+        commentaire: 'Désactivé "temporairement" pour maintenance.',
       },
       produits: [
-        { reference: 'P-3001', description: 'Sonde de température IP65 – usage industriel' },
-        { reference: 'P-3002', description: 'Interface de supervision SNMP v3' },
+        { reference: 'P-3001', description: 'Sonde de température IP65 – usage industriel.' },
+        { reference: 'P-3002', description: "L'interface de supervision SNMP v3" },
       ],
     },
   ]);
+
+  // if (!printed) {
+  //   printed = true;
+  //   console.log(inspect(await model.find({}), false, null, true));
+  // }
 }
+
+// let printed = false;

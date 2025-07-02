@@ -86,12 +86,58 @@ function addMergeUpdateStage(aggregate, $set) {
 function searchFrText(value) {
     if (typeof value !== 'string')
         return '';
+    const stopWords = [
+        'alors',
+        'ainsi',
+        'avant',
+        'après',
+        'aussi',
+        'avec',
+        'avoir',
+        'comme',
+        'contre',
+        'dans',
+        'depuis',
+        'dessus',
+        'dessous',
+        'donc',
+        'encore',
+        'entre',
+        'était',
+        'étant',
+        'être',
+        'faire',
+        'jusqu',
+        'lors',
+        'moins',
+        'moment',
+        'même',
+        'nous',
+        'parce',
+        'pendant',
+        'peut',
+        'puisque',
+        'quand',
+        'quelque',
+        'sans',
+        'serait',
+        'seront',
+        'souvent',
+        'toute',
+        'tous',
+        'très',
+        'vers',
+        'voici',
+        'voilà',
+        'vous',
+    ];
     return value
         .toLowerCase()
-        .replace(/[^\w\s-_]/g, '')
         .split(/\s+/)
+        .filter(s => !stopWords.includes(s))
         .reduce((pv, cv) => {
-        for (let i = 3; i <= cv.length; i++)
+        cv = cv.replace(/^[.,!?;:()"'«»]+|[.,!?;:()"'«»]+$/g, '').replace(/\b([dlmctjqs])['’]\s*/gi, '');
+        for (let i = 3; i <= cv.length - 1; i++)
             pv.push(cv.slice(0, i));
         return pv;
     }, [])

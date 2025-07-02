@@ -72,6 +72,20 @@ function registerMiddleWare(schema, fields) {
             return;
         (0, update_tools_1.addMergeUpdateStage)(this, buildSetUpdate(fields));
     });
+    schema.pre(/^find/, function (next) {
+        const projection = this.projection();
+        lodash.forEach(fields, field => {
+            if (!projection)
+                this.select(`-${field.textPath}`);
+            else if (projection[field.textPath] !== true &&
+                projection[field.textPath] !== 1 &&
+                projection[`+${field.textPath}`] !== true &&
+                projection[`+${field.textPath}`] !== 1) {
+                projection[field.textPath] = false;
+            }
+        });
+        next();
+    });
 }
 function consolidateUpdate(fields, filter, update, arrayFilters) {
     const updatedFields = lodash.filter(fields, field => (0, update_tools_1.hasQueryFieldUpdate)(update, field.path));
@@ -137,6 +151,8 @@ function addInitialValue(doc, path) {
     const head = lodash.head(chunks);
     if (chunks.length === 1) {
         doc[`__${head}`] = (0, update_tools_1.searchFrText)(doc[head]);
+        if (['commentaire', 'description'].includes(path))
+            console.log(`##### ${path}\n`, doc[`__${head}`], '\n');
     }
     else if (Array.isArray(doc[head])) {
         lodash.forEach(doc[head], d => addInitialValue(d, lodash.join(lodash.slice(chunks, 1), '.')));
@@ -195,7 +211,7 @@ function updateSchema(schema, fields) {
             if (info?.schema)
                 info.schema.path(field.textPath.substring(schemaPath.length + 1), { type: String });
             else
-                schema.path(field.textPath, { type: String });
+                schema.path(field.textPath, { type: String, select: false });
             text[field.path] = field.weight;
             text[field.textPath] = field.weight;
         }

@@ -105,6 +105,22 @@ function registerMiddleWare(schema: Schema, fields: Field[]) {
     if (!fields.length) return;
     addMergeUpdateStage(this, buildSetUpdate(fields));
   });
+
+  schema.pre(/^find/, function (this: Query<any, any>, next: CallbackWithoutResultAndOptionalError) {
+    const projection = this.projection();
+    lodash.forEach(fields, field => {
+      if (!projection) this.select(`-${field.textPath}`);
+      else if (
+        projection[field.textPath] !== true &&
+        projection[field.textPath] !== 1 &&
+        projection[`+${field.textPath}`] !== true &&
+        projection[`+${field.textPath}`] !== 1
+      ) {
+        projection[field.textPath] = false;
+      }
+    });
+    next();
+  });
 }
 
 function consolidateUpdate(fields: Field[], filter: any, update: any, arrayFilters?: any[]): any[] | null {
@@ -175,6 +191,7 @@ function addInitialValue(doc: any, path: string) {
   const head = lodash.head(chunks)!;
   if (chunks.length === 1) {
     doc[`__${head}`] = searchFrText(doc[head]);
+    if (['commentaire', 'description'].includes(path)) console.log(`##### ${path}\n`, doc[`__${head}`], '\n');
   } else if (Array.isArray(doc[head])) {
     lodash.forEach(doc[head], d => addInitialValue(d, lodash.join(lodash.slice(chunks, 1), '.')));
   } else if (typeof doc[head] === 'object') {
@@ -227,7 +244,7 @@ function updateSchema(schema: Schema<any>, fields: Field[]) {
       const schemaPath = field.path.substring(0, lodash.lastIndexOf(field.path, '.'));
       const info = schema.path(schemaPath);
       if (info?.schema) info.schema.path(field.textPath.substring(schemaPath.length + 1), { type: String });
-      else schema.path(field.textPath, { type: String });
+      else schema.path(field.textPath, { type: String, select: false });
       text[field.path] = field.weight;
       text[field.textPath] = field.weight;
     }
