@@ -4,7 +4,7 @@ exports.searchPlugin = void 0;
 const mongoose_update_to_pipeline_1 = require("@eherve/mongoose-update-to-pipeline");
 const lodash = require("lodash");
 const update_tools_1 = require("./update-tools");
-const searchPlugin = function (schema, options) {
+const searchPlugin = function (schema) {
     const fields = getSchemaFields(schema);
     if (!fields.length)
         return;
