@@ -13,4 +13,4 @@ declare module 'mongoose' {
         };
     }
 }
-export declare const searchPlugin: (schema: Schema) => void;
+export declare const searchPlugin: (schema: Schema, options?: any) => void;

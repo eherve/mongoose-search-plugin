@@ -4,7 +4,7 @@ exports.searchPlugin = void 0;
 const mongoose_update_to_pipeline_1 = require("@eherve/mongoose-update-to-pipeline");
 const lodash = require("lodash");
 const update_tools_1 = require("./update-tools");
-const searchPlugin = function (schema) {
+const searchPlugin = function (schema, options) {
     const fields = getSchemaFields(schema);
     if (!fields.length)
         return;
@@ -119,20 +119,7 @@ function buildArrayFieldUpdate(field) {
             $map: {
                 input: `$${arrayPath}`,
                 as: 'elemt',
-                in: {
-                    $cond: {
-                        if: { $not: { $eq: [`$$elemt.${valuePath}`, `$$elemt.${valuePath}Info.value`] } },
-                        then: {
-                            $mergeObjects: [
-                                '$$elemt',
-                                {
-                                    [`__${valuePath}`]: buildFieldProjection(`$elemt.${valuePath}`),
-                                },
-                            ],
-                        },
-                        else: '$$elemt',
-                    },
-                },
+                in: { $mergeObjects: ['$$elemt', { [`__${valuePath}`]: buildFieldProjection(`$elemt.${valuePath}`) }] },
             },
         },
     };
@@ -151,8 +138,6 @@ function addInitialValue(doc, path) {
     const head = lodash.head(chunks);
     if (chunks.length === 1) {
         doc[`__${head}`] = (0, update_tools_1.searchFrText)(doc[head]);
-        if (['commentaire', 'description'].includes(path))
-            console.log(`##### ${path}\n`, doc[`__${head}`], '\n');
     }
     else if (Array.isArray(doc[head])) {
         lodash.forEach(doc[head], d => addInitialValue(d, lodash.join(lodash.slice(chunks, 1), '.')));
@@ -168,15 +153,10 @@ function getSchemaFields(schema, parentPath, arrays) {
         const path = parentPath ? `${parentPath}.${schemaType.path}` : schemaType.path;
         switch (schemaType.instance) {
             case 'Embedded':
-                if (schemaType.options?.search)
-                    fields.push(buildField(schemaType, key, path, arrays));
-                else
-                    fields.push(...getSchemaFields(schemaType.schema, path, arrays));
+                fields.push(...getSchemaFields(schemaType.schema, path, arrays));
                 break;
             case 'Array':
-                if (schemaType.options?.search)
-                    fields.push(buildField(schemaType, key, path, arrays));
-                else if (schemaType.schema) {
+                if (schemaType.schema) {
                     fields.push(...getSchemaFields(schemaType.schema, path, lodash.concat(arrays || [], [key])));
                 }
                 break;

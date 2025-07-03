@@ -39,7 +39,7 @@ const ModelSchema = new mongoose.Schema({
   produits: { type: [ProduitSchema] },
 });
 
-mongoose.plugin(searchPlugin);
+mongoose.plugin(searchPlugin, {test: 'wtf'});
 
 const model: mongoose.Model<any> = mongoose.model('Parent', ModelSchema) as any;
 
